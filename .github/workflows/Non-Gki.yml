@@ -177,7 +177,15 @@ jobs:
 
       - name: Create GitHub Release
         run: |
-          REL_NAME="${SOC}_${{ inputs.kernel_source }}-${{ inputs.kernel_branch }}_${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
+          REL_NAME="${{ inputs.device_codename }}_${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
           cd ${GITHUB_WORKSPACE}
           ZIP_FILE=$(ls *.zip)
-          gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" Image
+          BOOT_DIR="kernel/out/arch/arm64/boot"
+          EXTRA_FILES=""
+          for img in Image Image.gz Image.gz-dtb; do
+            if [ -f "${BOOT_DIR}/${img}" ]; then
+              cp "${BOOT_DIR}/${img}" "${GITHUB_WORKSPACE}/${img}"
+              EXTRA_FILES="${EXTRA_FILES} ${img}"
+            fi
+          done
+          gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" ${EXTRA_FILES}
