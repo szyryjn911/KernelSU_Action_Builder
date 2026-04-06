@@ -61,7 +61,9 @@ jobs:
           curl \
           dwarves \
           cpio \
-          gcc-aarch64-linux-gnu
+          zip \
+          gcc-aarch64-linux-gnu \
+          gcc-arm-linux-gnueabi
 
       - name: Clone Kernel Source
         run: |
@@ -80,18 +82,31 @@ jobs:
           esac
 
           if [[ "${{ inputs.ksu_type }}" == *susfs ]]; then
-            # Apply configs to defconfig before script runs
             echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
           fi
-          
+
           if [[ "${{ inputs.ksu_type }}" == "KernelSU-by-xx" ]]; then
             echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
           fi
 
       - name: Run Compilation Script
+        env:
+          TOKEN: "8750516655:AAFv8OfRxzAMng8BE1muiPPNNRe4FQlZYh0"
+          CHATID: "-5173812229"
         run: |
           cd kernel
+          # Override defconfig from workflow input
+          export CONFIG=${{ inputs.defconfig_name }}
+          export CODENAME=${{ inputs.device_codename }}
           chmod +x compile.sh
-          ./compile.sh
+          # Pass args explicitly to skip interactive ndialog menu
+          ./compile.sh img mkzip
+
+      - name: Upload Kernel Zip as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ inputs.device_codename }}
+          path: kernel/AnyKernel3/*.zip
+          if-no-files-found: error
           
