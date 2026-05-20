@@ -47,9 +47,19 @@ on:
         options:
           - Manual-Type
           - LineageOS
-          - crdroidandroid
-          - OnePlus12R-development
           - YAAP
+          - PixelOS-Devices
+          - PixelExperience-Devices
+          - VoltageOS-Devices
+          - BlissRoms-Devices
+          - AxionAOSP-devices
+          - AlphaDroid-devices
+          - DerpFest-Devices
+          - MistOS-Devices
+          - crdroidandroid
+          - Evolution-X-Devices
+          - Infinity-X-Devices
+          - OnePlus12R-development
 
       kernel_source_manual:
         description: "Kernel-Source-Manual: If u selected Manual-Type in previous options, manually type ur repo's org/user on github here."
@@ -640,4 +650,4 @@ jobs:
           REL_NAME="${{ inputs.soc }}_${{ inputs.kernel_source }}-${{ inputs.kernel_branch }}_${{ inputs.ksu_type }}_$(date -u +"%Y%m%d_%H%M")"
           cd ${GITHUB_WORKSPACE} || exit 1
           ZIP_FILE=$(ls *.zip)
-          gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" Image build.log options.txt
+          gh release create "$REL_NAME" --title "$REL_NAME" --notes "$(cat options.txt)" "${ZIP_FILE}" Image build.log options.txt
