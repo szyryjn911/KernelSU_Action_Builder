@@ -148,22 +148,24 @@ jobs:
           touch ./.scmversion
 
           # Send build start message to Telegram
+          TG_MSG="*=================================*%0A"
+          TG_MSG+="*       S H I N I G A M I        *%0A"
+          TG_MSG+="*           K E R N E L          *%0A"
+          TG_MSG+="*=================================*%0A"
+          TG_MSG+="*Compiler*: \`${CLANG_VER}\`%0A"
+          TG_MSG+="*Linux Version*: \`${KERNEL_VER}\`%0A"
+          TG_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
+          TG_MSG+="*KernelSU*: \`skye-tachyon/KernelSU\`%0A"
+          TG_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
+          TG_MSG+="*Build Date*: \`$(date +'%Y-%m-%d %H:%M')\`%0A"
+          TG_MSG+="*Last Commit*: \`${LAST_COMMIT}\`%0A"
+          TG_MSG+="*Commit Hash*: \`${COMMIT_HASH}\`"
+
           curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendMessage" \
             -d chat_id="${{ inputs.telegram_chat_id }}" \
             -d parse_mode="Markdown" \
             -d disable_web_page_preview=true \
-            -d text="*=================================*
-*       S H I N I G A M I        *
-*           K E R N E L          *
-*=================================*
-*Compiler*: \`${CLANG_VER}\`
-*Linux Version*: \`${KERNEL_VER}\`
-*Device*: \`${{ inputs.device_codename }}\`
-*KernelSU*: \`skye-tachyon/KernelSU\`
-*SUSFS*: \`${SUSFS_LABEL}\`
-*Build Date*: \`$(date +'%Y-%m-%d %H:%M')\`
-*Last Commit*: \`${LAST_COMMIT}\`
-*Commit Hash*: \`${COMMIT_HASH}\`"
+            -d text="${TG_MSG}"
 
           make O=out ${{ inputs.defconfig_name }}
 
@@ -174,13 +176,15 @@ jobs:
           set -e
 
           if [ $BUILD_STATUS -ne 0 ]; then
+            ERR_MSG="*Build Failed!* ❌%0A"
+            ERR_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
+            ERR_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`"
+
             curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
               -F chat_id="${{ inputs.telegram_chat_id }}" \
               -F parse_mode="Markdown" \
               -F document=@"${GITHUB_WORKSPACE}/build.log" \
-              -F caption="*Build Failed!* ❌
-*Device*: \`${{ inputs.device_codename }}\`
-*SUSFS*: \`${SUSFS_LABEL}\`"
+              -F caption="${ERR_MSG}"
             exit 1
           fi
 
@@ -224,14 +228,17 @@ jobs:
             SUSFS_LABEL="Yes"
           fi
 
+          SUCCESS_MSG="*Build Successful!* ✅%0A"
+          SUCCESS_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
+          SUCCESS_MSG+="*KernelSU*: \`skye-tachyon/KernelSU\`%0A"
+          SUCCESS_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
+          SUCCESS_MSG+="*File*: \`${ZIP_NAME}.zip\`%0A"
+          SUCCESS_MSG+="*Size*: \`${FILE_SIZE}\`%0A"
+          SUCCESS_MSG+="*Date*: \`$(date -u +'%Y-%m-%d %H:%M UTC')\`"
+
           curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
             -F chat_id="${{ inputs.telegram_chat_id }}" \
             -F parse_mode="Markdown" \
             -F document=@"${ZIP_FILE}" \
-            -F caption="*Build Successful!* ✅
-*Device*: \`${{ inputs.device_codename }}\`
-*KernelSU*: \`skye-tachyon/KernelSU\`
-*SUSFS*: \`${SUSFS_LABEL}\`
-*File*: \`${ZIP_NAME}.zip\`
-*Size*: \`${FILE_SIZE}\`
-*Date*: \`$(date -u +'%Y-%m-%d %H:%M UTC')\`"
+            -F caption="${SUCCESS_MSG}"
+            
