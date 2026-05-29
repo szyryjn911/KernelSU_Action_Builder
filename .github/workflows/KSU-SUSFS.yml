@@ -89,7 +89,7 @@ jobs:
       - name: Setup KernelSU
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/skye-tachyon/KernelSU/main/kernel/setup.sh" | bash -s main
+          curl -LSs "https://raw.githubusercontent.com/skye-tachyon/KernelSU/master/kernel/setup.sh" | bash -s master
 
       - name: Apply SUSFS patch into KernelSU
         if: ${{ inputs.enable_susfs == 'true' }}
