@@ -99,7 +99,7 @@ jobs:
 
           # Apply the susfs patch inside the KernelSU folder that was cloned into kernel source
           cd kernel/KernelSU
-          git apply /tmp/KernelSU-Hooks/0001-kernel-implement-susfs-v2.1.0-xxKSU.patch
+          git apply --ignore-whitespace --ignore-space-change /tmp/KernelSU-Hooks/0001-kernel-implement-susfs-v2.1.0-xxKSU.patch
           echo "[+] SUSFS patch applied into KernelSU successfully"
 
       - name: Configure defconfig
