@@ -1,0 +1,237 @@
+name: Compile Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_source:
+        description: Kernel Source Repo URL
+        required: true
+        type: string
+
+      kernel_branch:
+        description: Kernel Branch
+        required: true
+        type: string
+
+      defconfig_name:
+        description: Defconfig Name
+        required: true
+        type: string
+
+      device_codename:
+        description: Device Codename (e.g. marble, alioth, vayu)
+        required: true
+        type: string
+
+      enable_susfs:
+        description: "Enable SUSFS? (applies susfs patch into KernelSU)"
+        required: true
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+      telegram_chat_id:
+        description: "Telegram Chat ID (e.g. -1001234567890)"
+        required: true
+        type: string
+
+      telegram_bot_token:
+        description: "Telegram Bot Token (e.g. 123456:ABC-DEF...)"
+        required: true
+        type: string
+
+jobs:
+  Kernel_CI:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      checks: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SWAP
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 16
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+          bc bison flex \
+          libssl-dev \
+          libelf-dev \
+          libdw-dev \
+          build-essential \
+          lz4 \
+          git \
+          python3 \
+          curl \
+          dwarves \
+          cpio \
+          gcc-aarch64-linux-gnu \
+          gcc-arm-linux-gnueabi
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b ${{ inputs.kernel_branch }} ${{ inputs.kernel_source }} kernel
+
+      - name: Download Neutron Clang
+        run: |
+          mkdir -p neutron-clang
+          cd neutron-clang
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S=23032025
+          cd ..
+
+      - name: Setup KernelSU
+        run: |
+          cd kernel
+          curl -LSs "https://raw.githubusercontent.com/skye-tachyon/KernelSU/main/kernel/setup.sh" | bash -s main
+
+      - name: Apply SUSFS patch into KernelSU
+        if: ${{ inputs.enable_susfs == 'true' }}
+        run: |
+          # Clone your SUSFS patch repo
+          git clone --depth=1 https://github.com/szyryjn911/KernelSU-Hooks.git /tmp/KernelSU-Hooks
+
+          # Apply the susfs patch inside the KernelSU folder that was cloned into kernel source
+          cd kernel/KernelSU
+          git apply /tmp/KernelSU-Hooks/0001-kernel-implement-susfs-v2.1.0-xxKSU.patch
+          echo "[+] SUSFS patch applied into KernelSU successfully"
+
+      - name: Configure defconfig
+        run: |
+          cd kernel
+          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+            echo "CONFIG_KSU=y"               >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS=y"         >> arch/arm64/configs/${{ inputs.defconfig_name }}
+          else
+            echo "CONFIG_KSU=y"                        >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y"   >> arch/arm64/configs/${{ inputs.defconfig_name }}
+          fi
+
+      - name: Compile Kernel
+        run: |
+          CLANG_ROOT="${GITHUB_WORKSPACE}/neutron-clang/bin"
+          CLANG_VER=$("${CLANG_ROOT}/clang" --version | head -n1 | sed 's/(https.*//' | sed 's/ version//' | xargs)
+          export PATH="${CLANG_ROOT}:/usr/bin/:${PATH}"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export LLVM=1
+          export LLVM_IAS=1
+          export CC="${CLANG_ROOT}/clang"
+          export CXX="${CLANG_ROOT}/clang++"
+          export HOSTCC="${CLANG_ROOT}/clang"
+          export HOSTCXX="${CLANG_ROOT}/clang++"
+          export LD="${CLANG_ROOT}/ld.lld"
+          export AR="${CLANG_ROOT}/llvm-ar"
+          export NM="${CLANG_ROOT}/llvm-nm"
+          export OBJCOPY="${CLANG_ROOT}/llvm-objcopy"
+          export OBJDUMP="${CLANG_ROOT}/llvm-objdump"
+          export STRIP="${CLANG_ROOT}/llvm-strip"
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          cd kernel
+          KERNEL_VER=$(make kernelversion 2>/dev/null)
+          LAST_COMMIT=$(git log --format='%s' -1)
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+
+          SUSFS_LABEL="No"
+          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+            SUSFS_LABEL="Yes"
+          fi
+
+          touch ./.scmversion
+
+          # Send build start message to Telegram
+          curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendMessage" \
+            -d chat_id="${{ inputs.telegram_chat_id }}" \
+            -d parse_mode="Markdown" \
+            -d disable_web_page_preview=true \
+            -d text="*=================================*
+*       S H I N I G A M I        *
+*           K E R N E L          *
+*=================================*
+*Compiler*: \`${CLANG_VER}\`
+*Linux Version*: \`${KERNEL_VER}\`
+*Device*: \`${{ inputs.device_codename }}\`
+*KernelSU*: \`skye-tachyon/KernelSU\`
+*SUSFS*: \`${SUSFS_LABEL}\`
+*Build Date*: \`$(date +'%Y-%m-%d %H:%M')\`
+*Last Commit*: \`${LAST_COMMIT}\`
+*Commit Hash*: \`${COMMIT_HASH}\`"
+
+          make O=out ${{ inputs.defconfig_name }}
+
+          # Build kernel, capture log, send log on failure
+          set +e
+          make -j$(nproc) O=out 2>&1 | tee "${GITHUB_WORKSPACE}/build.log"
+          BUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          if [ $BUILD_STATUS -ne 0 ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
+              -F chat_id="${{ inputs.telegram_chat_id }}" \
+              -F parse_mode="Markdown" \
+              -F document=@"${GITHUB_WORKSPACE}/build.log" \
+              -F caption="*Build Failed!* ❌
+*Device*: \`${{ inputs.device_codename }}\`
+*SUSFS*: \`${SUSFS_LABEL}\`"
+            exit 1
+          fi
+
+      - name: Make AnyKernel3
+        run: |
+          SUSFS_LABEL="NoSUSFS"
+          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+            SUSFS_LABEL="SUSFS"
+          fi
+          ZIP_NAME="SHINIGAMI-KERNEL-${{ inputs.device_codename }}-${SUSFS_LABEL}-$(date -u +"%Y%m%d_%H%M")"
+          BOOT_DIR="kernel/out/arch/arm64/boot"
+          git clone -b RMX2020 https://github.com/szyryjn/AnyKernel3.git
+
+          if [ -f $BOOT_DIR/Image.gz-dtb ]; then
+              cp $BOOT_DIR/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f $BOOT_DIR/Image.gz ]; then
+              cp $BOOT_DIR/Image.gz AnyKernel3/Image.gz
+          fi
+
+          if [ -f $BOOT_DIR/dtbo.img ]; then
+              cp $BOOT_DIR/dtbo.img AnyKernel3/dtbo.img
+          fi
+
+          cd AnyKernel3
+          CLANG_ROOT="${GITHUB_WORKSPACE}/neutron-clang/bin"
+          CLANG_VER=$("${CLANG_ROOT}/clang" --version | head -n1 | sed 's/(https.*//' | sed 's/ version//' | xargs)
+          BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M UTC')
+          sed -i "s|ksu_supported=false|ksu_supported=true|" anykernel.sh
+          sed -i "s|##CLANG_VERSION##|${CLANG_VER}|" anykernel.sh
+          sed -i "s|##BUILD_DATE##|${BUILD_DATE}|" anykernel.sh
+          zip -r9 ../"${ZIP_NAME}.zip" * -x .git
+          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
+
+      - name: Upload to Telegram
+        run: |
+          ZIP_FILE=$(ls ${GITHUB_WORKSPACE}/*.zip)
+          FILE_SIZE=$(du -sh "$ZIP_FILE" | cut -f1)
+
+          SUSFS_LABEL="No"
+          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+            SUSFS_LABEL="Yes"
+          fi
+
+          curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
+            -F chat_id="${{ inputs.telegram_chat_id }}" \
+            -F parse_mode="Markdown" \
+            -F document=@"${ZIP_FILE}" \
+            -F caption="*Build Successful!* ✅
+*Device*: \`${{ inputs.device_codename }}\`
+*KernelSU*: \`skye-tachyon/KernelSU\`
+*SUSFS*: \`${SUSFS_LABEL}\`
+*File*: \`${ZIP_NAME}.zip\`
+*Size*: \`${FILE_SIZE}\`
+*Date*: \`$(date -u +'%Y-%m-%d %H:%M UTC')\`"
