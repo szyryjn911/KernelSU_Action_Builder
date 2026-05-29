@@ -83,7 +83,7 @@ jobs:
         run: |
           mkdir -p neutron-clang
           cd neutron-clang
-          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S=23032025
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
           cd ..
 
       - name: Setup KernelSU
