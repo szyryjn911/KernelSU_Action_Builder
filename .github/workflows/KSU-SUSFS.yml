@@ -32,7 +32,7 @@ on:
           - KernelSU-Next
 
       enable_susfs:
-        description: "Enable SUSFS? (forced true for KernelSU-Next)"
+        description: "Enable SUSFS? (ignored if KernelSU-Next, always true)"
         required: true
         type: choice
         options:
@@ -115,10 +115,39 @@ jobs:
             echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y"   >> arch/arm64/configs/${{ inputs.defconfig_name }}
           fi
 
-      - name: Compile Kernel
+      - name: Send Build Start Message
         run: |
           CLANG_ROOT="${GITHUB_WORKSPACE}/neutron-clang/bin"
           CLANG_VER=$("${CLANG_ROOT}/clang" --version | head -n1 | sed 's/(https.*//' | sed 's/ version//' | xargs)
+          cd kernel
+          KERNEL_VER=$(make kernelversion 2>/dev/null)
+          LAST_COMMIT=$(git log --format='%s' -1)
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          SUSFS_LABEL="No"
+          if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
+            SUSFS_LABEL="Yes"
+          fi
+          TG_MSG="*=================================*%0A"
+          TG_MSG+="*       S H I N I G A M I        *%0A"
+          TG_MSG+="*           K E R N E L          *%0A"
+          TG_MSG+="*=================================*%0A"
+          TG_MSG+="*Compiler*: \`${CLANG_VER}\`%0A"
+          TG_MSG+="*Linux Version*: \`${KERNEL_VER}\`%0A"
+          TG_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
+          TG_MSG+="*KernelSU*: \`${{ inputs.ksu_variant }}\`%0A"
+          TG_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
+          TG_MSG+="*Build Date*: \`$(date +'%Y-%m-%d %H:%M')\`%0A"
+          TG_MSG+="*Last Commit*: \`${LAST_COMMIT}\`%0A"
+          TG_MSG+="*Commit Hash*: \`${COMMIT_HASH}\`"
+          curl -sX POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendMessage" \
+            -d "chat_id=${{ inputs.telegram_chat_id }}" \
+            -d "parse_mode=Markdown" \
+            -d "disable_web_page_preview=true" \
+            -d "text=${TG_MSG}"
+
+      - name: Compile Kernel
+        run: |
+          CLANG_ROOT="${GITHUB_WORKSPACE}/neutron-clang/bin"
           export PATH="${CLANG_ROOT}:/usr/bin/:${PATH}"
           export ARCH=arm64
           export SUBARCH=arm64
@@ -137,43 +166,15 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 
-          cd kernel
-          KERNEL_VER=$(make kernelversion 2>/dev/null)
-          LAST_COMMIT=$(git log --format='%s' -1)
-          COMMIT_HASH=$(git rev-parse --short HEAD)
-
           SUSFS_LABEL="No"
           if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
             SUSFS_LABEL="Yes"
           fi
 
-          KSU_LABEL="${{ inputs.ksu_variant }}"
-
+          cd kernel
           touch ./.scmversion
-
-          # Send build start message to Telegram
-          TG_MSG="*=================================*%0A"
-          TG_MSG+="*       S H I N I G A M I        *%0A"
-          TG_MSG+="*           K E R N E L          *%0A"
-          TG_MSG+="*=================================*%0A"
-          TG_MSG+="*Compiler*: \`${CLANG_VER}\`%0A"
-          TG_MSG+="*Linux Version*: \`${KERNEL_VER}\`%0A"
-          TG_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
-          TG_MSG+="*KernelSU*: \`${KSU_LABEL}\`%0A"
-          TG_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
-          TG_MSG+="*Build Date*: \`$(date +'%Y-%m-%d %H:%M')\`%0A"
-          TG_MSG+="*Last Commit*: \`${LAST_COMMIT}\`%0A"
-          TG_MSG+="*Commit Hash*: \`${COMMIT_HASH}\`"
-
-          curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendMessage" \
-            -d chat_id="${{ inputs.telegram_chat_id }}" \
-            -d parse_mode="Markdown" \
-            -d disable_web_page_preview=true \
-            -d text="${TG_MSG}"
-
           make O=out ${{ inputs.defconfig_name }}
 
-          # Build kernel, capture log, send log on failure
           set +e
           make -j$(nproc) O=out 2>&1 | tee "${GITHUB_WORKSPACE}/build.log"
           BUILD_STATUS=${PIPESTATUS[0]}
@@ -182,14 +183,13 @@ jobs:
           if [ $BUILD_STATUS -ne 0 ]; then
             ERR_MSG="*Build Failed!* ❌%0A"
             ERR_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
-            ERR_MSG+="*KernelSU*: \`${KSU_LABEL}\`%0A"
+            ERR_MSG+="*KernelSU*: \`${{ inputs.ksu_variant }}\`%0A"
             ERR_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`"
-
-            curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
-              -F chat_id="${{ inputs.telegram_chat_id }}" \
-              -F parse_mode="Markdown" \
-              -F document=@"${GITHUB_WORKSPACE}/build.log" \
-              -F caption="${ERR_MSG}"
+            curl -sX POST -F document=@"${GITHUB_WORKSPACE}/build.log" \
+              "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
+              -F "chat_id=${{ inputs.telegram_chat_id }}" \
+              -F "parse_mode=Markdown" \
+              -F "caption=${ERR_MSG}"
             exit 1
           fi
 
@@ -241,9 +241,9 @@ jobs:
           SUCCESS_MSG+="*Size*: \`${FILE_SIZE}\`%0A"
           SUCCESS_MSG+="*Date*: \`$(date -u +'%Y-%m-%d %H:%M UTC')\`"
 
-          curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
-            -F chat_id="${{ inputs.telegram_chat_id }}" \
-            -F parse_mode="Markdown" \
-            -F document=@"${ZIP_FILE}" \
-            -F caption="${SUCCESS_MSG}"
+          curl -sX POST -F document=@"${ZIP_FILE}" \
+            "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
+            -F "chat_id=${{ inputs.telegram_chat_id }}" \
+            -F "parse_mode=Markdown" \
+            -F "caption=${SUCCESS_MSG}"
             
