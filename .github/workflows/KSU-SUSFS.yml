@@ -104,14 +104,6 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/skye-tachyon/KernelSU/master/kernel/setup.sh" | bash -s master
           fi
 
-      - name: Apply SUSFS patch into KernelSU
-        if: ${{ inputs.enable_susfs == 'true' || inputs.ksu_variant == 'KernelSU-Next' }}
-        run: |
-          git clone --depth=1 https://github.com/szyryjn911/KernelSU-Hooks.git /tmp/KernelSU-Hooks
-          cd kernel/KernelSU
-          git apply --ignore-whitespace --ignore-space-change /tmp/KernelSU-Hooks/0001-kernel-implement-susfs-v2.1.0-xxKSU.patch
-          echo "[+] SUSFS patch applied into KernelSU successfully"
-
       - name: Configure defconfig
         run: |
           cd kernel
