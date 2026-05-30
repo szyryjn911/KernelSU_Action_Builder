@@ -23,8 +23,16 @@ on:
         required: true
         type: string
 
+      ksu_variant:
+        description: "KernelSU Variant"
+        required: true
+        type: choice
+        options:
+          - skye-tachyon-KernelSU
+          - KernelSU-Next
+
       enable_susfs:
-        description: "Enable SUSFS? (applies susfs patch into KernelSU)"
+        description: "Enable SUSFS? (forced true for KernelSU-Next)"
         required: true
         type: choice
         options:
@@ -89,15 +97,17 @@ jobs:
       - name: Setup KernelSU
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/skye-tachyon/KernelSU/master/kernel/setup.sh" | bash -s master
+          if [[ "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
+            git clone -b legacy-susfs-v2 https://github.com/szyryjn911/KernelSU-Next.git KernelSU-Next
+            bash KernelSU-Next/kernel/setup.sh legacy-susfs-v2
+          else
+            curl -LSs "https://raw.githubusercontent.com/skye-tachyon/KernelSU/master/kernel/setup.sh" | bash -s master
+          fi
 
       - name: Apply SUSFS patch into KernelSU
-        if: ${{ inputs.enable_susfs == 'true' }}
+        if: ${{ inputs.enable_susfs == 'true' || inputs.ksu_variant == 'KernelSU-Next' }}
         run: |
-          # Clone your SUSFS patch repo
           git clone --depth=1 https://github.com/szyryjn911/KernelSU-Hooks.git /tmp/KernelSU-Hooks
-
-          # Apply the susfs patch inside the KernelSU folder that was cloned into kernel source
           cd kernel/KernelSU
           git apply --ignore-whitespace --ignore-space-change /tmp/KernelSU-Hooks/0001-kernel-implement-susfs-v2.1.0-xxKSU.patch
           echo "[+] SUSFS patch applied into KernelSU successfully"
@@ -105,7 +115,7 @@ jobs:
       - name: Configure defconfig
         run: |
           cd kernel
-          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+          if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
             echo "CONFIG_KSU=y"               >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS=y"         >> arch/arm64/configs/${{ inputs.defconfig_name }}
           else
@@ -141,9 +151,11 @@ jobs:
           COMMIT_HASH=$(git rev-parse --short HEAD)
 
           SUSFS_LABEL="No"
-          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+          if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
             SUSFS_LABEL="Yes"
           fi
+
+          KSU_LABEL="${{ inputs.ksu_variant }}"
 
           touch ./.scmversion
 
@@ -155,7 +167,7 @@ jobs:
           TG_MSG+="*Compiler*: \`${CLANG_VER}\`%0A"
           TG_MSG+="*Linux Version*: \`${KERNEL_VER}\`%0A"
           TG_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
-          TG_MSG+="*KernelSU*: \`skye-tachyon/KernelSU\`%0A"
+          TG_MSG+="*KernelSU*: \`${KSU_LABEL}\`%0A"
           TG_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
           TG_MSG+="*Build Date*: \`$(date +'%Y-%m-%d %H:%M')\`%0A"
           TG_MSG+="*Last Commit*: \`${LAST_COMMIT}\`%0A"
@@ -178,6 +190,7 @@ jobs:
           if [ $BUILD_STATUS -ne 0 ]; then
             ERR_MSG="*Build Failed!* ❌%0A"
             ERR_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
+            ERR_MSG+="*KernelSU*: \`${KSU_LABEL}\`%0A"
             ERR_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`"
 
             curl -s -X POST "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
@@ -191,12 +204,12 @@ jobs:
       - name: Make AnyKernel3
         run: |
           SUSFS_LABEL="NoSUSFS"
-          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+          if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
             SUSFS_LABEL="SUSFS"
           fi
           ZIP_NAME="SHINIGAMI-KERNEL-${{ inputs.device_codename }}-${SUSFS_LABEL}-$(date -u +"%Y%m%d_%H%M")"
           BOOT_DIR="kernel/out/arch/arm64/boot"
-          git clone -b RMX2020 https://github.com/szyryjn/AnyKernel3.git
+          git clone -b RMX2020 https://github.com/szyryjn/AnyKernel3.git AnyKernel3
 
           if [ -f $BOOT_DIR/Image.gz-dtb ]; then
               cp $BOOT_DIR/Image.gz-dtb AnyKernel3/Image.gz-dtb
@@ -224,13 +237,13 @@ jobs:
           FILE_SIZE=$(du -sh "$ZIP_FILE" | cut -f1)
 
           SUSFS_LABEL="No"
-          if [[ "${{ inputs.enable_susfs }}" == "true" ]]; then
+          if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
             SUSFS_LABEL="Yes"
           fi
 
           SUCCESS_MSG="*Build Successful!* ✅%0A"
           SUCCESS_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
-          SUCCESS_MSG+="*KernelSU*: \`skye-tachyon/KernelSU\`%0A"
+          SUCCESS_MSG+="*KernelSU*: \`${{ inputs.ksu_variant }}\`%0A"
           SUCCESS_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
           SUCCESS_MSG+="*File*: \`${ZIP_NAME}.zip\`%0A"
           SUCCESS_MSG+="*Size*: \`${FILE_SIZE}\`%0A"
