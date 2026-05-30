@@ -181,10 +181,10 @@ jobs:
           set -e
 
           if [ $BUILD_STATUS -ne 0 ]; then
-            ERR_MSG="*Build Failed!* ❌%0A"
-            ERR_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
-            ERR_MSG+="*KernelSU*: \`${{ inputs.ksu_variant }}\`%0A"
-            ERR_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`"
+            ERR_MSG="*Build Failed!* ❌
+            *Device*: \`${{ inputs.device_codename }}\`
+            *KernelSU*: \`${{ inputs.ksu_variant }}\`
+            *SUSFS*: \`${SUSFS_LABEL}\`"
             curl -sX POST -F document=@"${GITHUB_WORKSPACE}/build.log" \
               "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
               -F "chat_id=${{ inputs.telegram_chat_id }}" \
@@ -233,13 +233,13 @@ jobs:
             SUSFS_LABEL="Yes"
           fi
 
-          SUCCESS_MSG="*Build Successful!* ✅%0A"
-          SUCCESS_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
-          SUCCESS_MSG+="*KernelSU*: \`${{ inputs.ksu_variant }}\`%0A"
-          SUCCESS_MSG+="*SUSFS*: \`${SUSFS_LABEL}\`%0A"
-          SUCCESS_MSG+="*File*: \`${ZIP_NAME}.zip\`%0A"
-          SUCCESS_MSG+="*Size*: \`${FILE_SIZE}\`%0A"
-          SUCCESS_MSG+="*Date*: \`$(date -u +'%Y-%m-%d %H:%M UTC')\`"
+          SUCCESS_MSG="*Build Successful!* ✅
+          *Device*: \`${{ inputs.device_codename }}\`
+          *KernelSU*: \`${{ inputs.ksu_variant }}\`
+          *SUSFS*: \`${SUSFS_LABEL}\`
+          *File*: \`${ZIP_NAME}.zip\`
+          *Size*: \`${FILE_SIZE}\`
+          *Date*: \`$(date -u +'%Y-%m-%d %H:%M UTC')\`"
 
           curl -sX POST -F document=@"${ZIP_FILE}" \
             "https://api.telegram.org/bot${{ inputs.telegram_bot_token }}/sendDocument" \
