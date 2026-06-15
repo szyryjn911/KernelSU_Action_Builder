@@ -149,12 +149,16 @@ jobs:
           fi
           
           make O=out ${{ inputs.defconfig_name }}
-          
+
+          # Fix: silentoldconfig interactive prompt issue (LITTLE_CPU_MASK etc.)
+          # Fills all new/missing symbols with defaults non-interactively
+          make O=out olddefconfig
+
           if [[ "${{ inputs.ksu_type }}" == "KernelSU-by-xx" ]]; then
             echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> out/.config
           fi
-          
-          make -j$(nproc) O=out 
+
+          make -j$(nproc) O=out
 
       - name: Make AnyKernel3
         run: |
@@ -195,3 +199,4 @@ jobs:
             fi
           done
           gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" ${EXTRA_FILES}
+          
