@@ -127,10 +127,10 @@ jobs:
           if [[ "${{ inputs.enable_susfs }}" == "true" || "${{ inputs.ksu_variant }}" == "KernelSU-Next" ]]; then
             SUSFS_LABEL="Yes"
           fi
-          TG_MSG="*=================================*%0A"
-          TG_MSG+="*       S H I N I G A M I        *%0A"
-          TG_MSG+="*           K E R N E L          *%0A"
-          TG_MSG+="*=================================*%0A"
+          TG_MSG="*=========================*%0A"
+          TG_MSG+="*    S H I N I G A M I   *%0A"
+          TG_MSG+="*       K E R N E L      *%0A"
+          TG_MSG+="*========================*%0A"
           TG_MSG+="*Compiler*: \`${CLANG_VER}\`%0A"
           TG_MSG+="*Linux Version*: \`${KERNEL_VER}\`%0A"
           TG_MSG+="*Device*: \`${{ inputs.device_codename }}\`%0A"
