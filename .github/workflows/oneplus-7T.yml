@@ -131,12 +131,12 @@ jobs:
               ;;
           esac
 
-          # --- FIX: gcc-wrapper.py Python3 print bug + REAL_CC for LLVM ---
+          # --- FIX: gcc-wrapper.py Python3 print bug (ALL occurrences) + REAL_CC for LLVM ---
           if [ -f scripts/gcc-wrapper.py ]; then
-            sed -i "s/print >> sys.stderr, args\[0\] + ':',e.strerror/print(args[0] + ':', e.strerror, file=sys.stderr)/" scripts/gcc-wrapper.py
+            perl -i -pe "s/print >> sys\.stderr, (.*?),?\s*\$/print(\$1, file=sys.stderr)/" scripts/gcc-wrapper.py
             export REAL_CC="${CLANG_ROOT}/clang"
           fi
-          # -----------------------------------------------------------------
+          # -----------------------------------------------------------------------------
 
           touch ./.scmversion
           
@@ -197,3 +197,4 @@ jobs:
             fi
           done
           gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" ${EXTRA_FILES}
+          
