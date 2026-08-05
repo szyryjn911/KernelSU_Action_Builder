@@ -137,6 +137,12 @@ jobs:
           if [[ "${{ inputs.ksu_type }}" == *susfs ]]; then
             curl -Lo susfs.patch https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/Patch/susfs_patch_to_4.14.patch
             curl -Lo inline.sh https://raw.githubusercontent.com/JackA1ltman/NonGKI_Kernel_Build_2nd/refs/heads/mainline/Patches/susfs_inline_hook_patches.sh
+
+            # fs/proc/cmdline.c and fs/proc/task_mmu.c already carry the susfs
+            # changes in this source tree, so strip their hunks out of the
+            # patch before applying to avoid re-apply conflicts.
+            python3 -c "import re; c=open('susfs.patch').read(); skip={'fs/proc/cmdline.c','fs/proc/task_mmu.c'}; blocks=re.split(r'(?=^diff --git )', c, flags=re.M); kept=[b for b in blocks if not re.match(r'diff --git a/(\S+) b/(\S+)', b) or re.match(r'diff --git a/(\S+) b/(\S+)', b).group(1) not in skip]; open('susfs.patch','w').write(''.join(kept))"
+
             patch -p1 < susfs.patch
             bash inline.sh
             
@@ -191,3 +197,4 @@ jobs:
             fi
           done
           gh release create "$REL_NAME" --title "$REL_NAME" --notes "" "${ZIP_FILE}" ${EXTRA_FILES}
+          
