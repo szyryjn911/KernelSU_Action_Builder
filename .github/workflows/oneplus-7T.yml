@@ -136,6 +136,8 @@ jobs:
           # --- FIX: gcc-wrapper.py Python2->3 print statements (grammar-based, handles ALL forms) + REAL_CC for LLVM ---
           if [ -f scripts/gcc-wrapper.py ]; then
             2to3 -f print -w -n scripts/gcc-wrapper.py
+            # Popen returns bytes in Py3 by default; force text mode so line.rstrip('\n') works
+            sed -i "s/subprocess\.Popen(args, stderr=subprocess\.PIPE)/subprocess.Popen(args, stderr=subprocess.PIPE, universal_newlines=True)/" scripts/gcc-wrapper.py
             export REAL_CC="${CLANG_ROOT}/clang"
           fi
           # -----------------------------------------------------------------------------------------------------------
