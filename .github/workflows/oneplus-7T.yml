@@ -123,6 +123,9 @@ jobs:
           export OBJDUMP="${CLANG_ROOT}/llvm-objdump"
           export STRIP="${CLANG_ROOT}/llvm-strip"
           export CROSS_COMPILE=aarch64-linux-gnu-
+          # Newer Clang emits this warning for old kernel union init patterns;
+          # gcc-wrapper.py's forbidden-warning check turns it fatal, so suppress it at the source.
+          export KCFLAGS="-Wno-default-const-init-field-unsafe -Wno-default-const-init-var-unsafe ${KCFLAGS}"
           cd kernel
           case "${{ inputs.ksu_type }}" in
             "KernelSU-by-xx")
@@ -160,7 +163,7 @@ jobs:
             echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> out/.config
           fi
           
-          make -j$(nproc) O=out 
+          make -j$(nproc) O=out KCFLAGS="${KCFLAGS}"
 
       - name: Make AnyKernel3
         run: |
