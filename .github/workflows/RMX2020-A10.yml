@@ -141,6 +141,7 @@ jobs:
           export OBJDUMP="${CLANG_ROOT}/llvm-objdump"
           export STRIP="${CLANG_ROOT}/llvm-strip"
           export CROSS_COMPILE=aarch64-linux-gnu-
+          export KCFLAGS="-Wno-error=array-compare"
           cd kernel
           case "${{ inputs.ksu_type }}" in
             "KernelSU-by-xx")
