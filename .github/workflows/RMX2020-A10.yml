@@ -120,6 +120,7 @@ jobs:
           make -j$(nproc)
           sudo make install
           sudo ln -sf /usr/local/python2.7/bin/python2.7 /usr/bin/python
+          sudo ln -sf /usr/local/python2.7/bin/python2.7 /usr/bin/python2
           
       - name: Compile Kernel
         run: |
