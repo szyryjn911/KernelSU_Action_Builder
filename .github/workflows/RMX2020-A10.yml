@@ -177,7 +177,7 @@ jobs:
             LOCALVERSION="${{ inputs.device_codename }}"
           fi
           KVER=$(make -s kernelversion)
-          KSU_TAG=$(echo "${{ inputs.ksu_type }}" | awk -F'-' '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) tolower(substr($i,2))} OFS="-"; print}')
+          KSU_TAG=$(echo "${{ inputs.ksu_type }}" | awk -F'-' 'BEGIN{OFS="-"}{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) tolower(substr($i,2))} print}')
           echo "zip_name=${LOCALVERSION}-${KVER}-${KSU_TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Make AnyKernel3
@@ -221,5 +221,3 @@ jobs:
             kernel/out/arch/arm64/boot/dtbo.img
           if-no-files-found: ignore
 
-
-          
