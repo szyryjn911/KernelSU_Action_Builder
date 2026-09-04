@@ -1,0 +1,229 @@
+name: Compile Kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      clang_version:
+        description: Type the clang version of ur kernel
+        required: true
+        type: choice
+        options:
+          - CLANG-7612306+GCC
+
+      kernel_source:
+        description: Kernel Source Repo URL
+        required: true
+        type: string
+
+      kernel_branch:
+        description: Kernel Branch
+        required: true
+        type: string
+
+      defconfig_name:
+        description: Defconfig Name
+        required: true
+        type: string
+
+      device_codename:
+        description: Device Codename (e.g. marble, alioth, vayu)
+        required: true
+        type: string
+
+      ksu_susfs:
+        description: "KernelSU: Enable SUSFS"
+        required: true
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+      nomount_enabled:
+        description: "Enable NoMount"
+        required: true
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  Kernel_CI:
+    env:
+      GH_TOKEN: ${{ github.token }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+      checks: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SWAP
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 16
+
+      - name: Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+          bc bison flex \
+          libssl-dev \
+          libelf-dev \
+          libdw-dev \
+          build-essential \
+          lz4 \
+          git \
+          python3 \
+          curl \
+          dwarves \
+          cpio \
+          gcc-aarch64-linux-gnu
+
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b ${{ inputs.kernel_branch }} ${{ inputs.kernel_source }} kernel
+
+      - name: Download AOSP Clang
+        run: |
+          mkdir -p toolchains
+          cd toolchains
+          OLD_TAGS=("CLANG-7612306+GCC")
+          if [[ " ${OLD_TAGS[@]} " =~ " ${{ inputs.clang_version }} " ]]; then
+            echo "Downloading clang from Github"
+            git clone --depth=1 https://github.com/SpiceOS-Beta/android_prebuilts_clang_host_linux-x86_clang-7612306 clang 
+            echo "Downloading gcc-64 from Github"
+            git clone --depth=1 https://github.com/sukrut-kelkar/gcc-linaro-4.9 gcc-64
+            echo "Downloading gcc-32 from github"
+            git clone --depth=1 https://github.com/chenxiaoqun/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf gcc-32
+          fi
+
+      - name: Install Python2 from source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential checkinstall libncurses-dev libssl-dev \
+          libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev libreadline-dev libdb-dev
+          curl -LO https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tgz
+          tar -xzf Python-2.7.18.tgz
+          cd Python-2.7.18
+          ./configure --prefix=/usr/local/python2.7
+          make -j$(nproc)
+          sudo make install
+          sudo ln -sf /usr/local/python2.7/bin/python2.7 /usr/bin/python
+          sudo ln -sf /usr/local/python2.7/bin/python2.7 /usr/bin/python2
+
+      - name: Compile Kernel
+        run: |
+          set -euo pipefail
+          export PATH="${GITHUB_WORKSPACE}/toolchains/clang/bin:${GITHUB_WORKSPACE}/toolchains/gcc-64/bin:${GITHUB_WORKSPACE}/toolchains/gcc-32/bin:${PATH}"
+          export CC="clang"
+          export CLANG_TRIPLE="aarch64-linux-gnu-"
+          export CROSS_COMPILE="${GITHUB_WORKSPACE}/toolchains/gcc-64/bin/aarch64-linux-gnu-"
+          export CROSS_COMPILE_ARM32="${GITHUB_WORKSPACE}/toolchains/gcc-32/bin/arm-linux-gnueabihf-"
+          
+          cd kernel
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s master
+          touch ./.scmversion
+
+          if [[ "${{ inputs.ksu_susfs }}" == "true" ]]; then
+            curl -Lo enable-susfs-in-ksu.patch https://raw.githubusercontent.com/szyryjn911/NonGKI_Kernel_Build/refs/heads/mainline/Patches/KernelSU-SUSFS/enable-susfs-in-ksu.patch
+            cd KernelSU
+            patch -p1 < ../enable-susfs-in-ksu.patch
+            cd ..
+
+            curl -Lo susfs.patch https://raw.githubusercontent.com/szyryjn911/NonGKI_Kernel_Build/refs/heads/mainline/Patches/Patch/susfs_patch_to_4.14.patch
+            patch -p1 < susfs.patch
+            
+            echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+          else
+            echo "CONFIG_KSU=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+          fi
+
+          if [[ "${{ inputs.nomount_enabled }}" == "true" ]]; then
+            curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
+            echo "CONFIG_NOMOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+          fi
+          
+          make O=out ARCH=arm64 CC="${CC}" CLANG_TRIPLE=${CLANG_TRIPLE} CROSS_COMPILE=${CROSS_COMPILE} CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} ${{ inputs.defconfig_name }}
+          
+          echo "CONFIG_KSU_TAMPER_SYSCALL_TABLE=y" >> out/.config
+          
+          make -j$(nproc) O=out ARCH=arm64 CC="${CC}" CLANG_TRIPLE=${CLANG_TRIPLE} CROSS_COMPILE=${CROSS_COMPILE} CROSS_COMPILE_ARM32=${CROSS_COMPILE_ARM32} CONFIG_NO_ERROR_ON_MISMATCH=y
+
+      - name: Determine kernel name
+        id: kname
+        run: |
+          cd kernel
+          LOCALVERSION=$(grep -oP '(?<=CONFIG_LOCALVERSION=")[^"]*' arch/arm64/configs/${{ inputs.defconfig_name }} | sed 's/^-//')
+          if [ -z "$LOCALVERSION" ]; then
+            LOCALVERSION="${{ inputs.device_codename }}"
+          fi
+          KVER=$(make -s kernelversion)
+          KSU_TAG="KernelSU"
+          if [[ "${{ inputs.ksu_susfs }}" == "true" ]]; then
+            KSU_TAG="${KSU_TAG}-Susfs"
+          else
+            KSU_TAG="${KSU_TAG}-NoSusfs"
+          fi
+          ZIP_NAME="${LOCALVERSION}-${KVER}-${KSU_TAG}"
+          ZIP_NAME=$(echo "$ZIP_NAME" | tr -d '[:space:]')
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Make AnyKernel3
+        run: |
+          ZIP_NAME="${{ steps.kname.outputs.zip_name }}"
+          BOOT_DIR="${GITHUB_WORKSPACE}/kernel/out/arch/arm64/boot"
+          git clone https://github.com/Kernel-SU/AnyKernel3.git
+          
+          if [ -f $BOOT_DIR/Image.gz-dtb ]; then
+              echo "Found Image.gz-dtb, using it."
+              cp $BOOT_DIR/Image.gz-dtb AnyKernel3/Image.gz-dtb
+          elif [ -f $BOOT_DIR/Image.gz ]; then
+              echo "Image.gz-dtb not found, using Image.gz."
+              cp $BOOT_DIR/Image.gz AnyKernel3/Image.gz
+          fi
+
+          if [ -f $BOOT_DIR/dtbo.img ]; then
+              echo "dtbo.img found, adding to AnyKernel."
+              cp $BOOT_DIR/dtbo.img AnyKernel3/dtbo.img
+          fi
+
+          cd AnyKernel3
+          sed -i "s|ksu_supported=false|ksu_supported=true|" anykernel.sh
+          mkdir -p "${GITHUB_WORKSPACE}/out/AK3"
+          rm -f "${GITHUB_WORKSPACE}/out/AK3/${ZIP_NAME}.zip"
+          zip -r9 "${GITHUB_WORKSPACE}/out/AK3/${ZIP_NAME}.zip" * -x .git -x ".git/*" -x "*.zip"
+
+      - name: Upload AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.kname.outputs.zip_name }}
+          path: ${{ github.workspace }}/out/AK3/
+          if-no-files-found: error
+
+      - name: Upload raw kernel images
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.kname.outputs.zip_name }}-raw-images
+          path: |
+            kernel/out/arch/arm64/boot/Image
+            kernel/out/arch/arm64/boot/Image.gz
+            kernel/out/arch/arm64/boot/Image.gz-dtb
+            kernel/out/arch/arm64/boot/dtbo.img
+          if-no-files-found: ignore
+
+
+          
