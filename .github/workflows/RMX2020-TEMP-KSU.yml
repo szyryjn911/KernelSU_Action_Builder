@@ -141,6 +141,7 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
+            echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
             echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> arch/arm64/configs/${{ inputs.defconfig_name }}
