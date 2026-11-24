@@ -124,7 +124,7 @@ jobs:
           cd kernel
           case "${{ inputs.ksu_type }}" in
             "KernelSU-by-xx")
-              curl -LSs "https://raw.githubusercontent.com/AstroByteX-Code/KernelSU/refs/heads/astro/kernel/setup.sh" | bash -s astro
+              curl -LSs "https://raw.githubusercontent.com/AstroByteX-Code/KernelSU/refs/heads/Sky/kernel/setup.sh" | bash -s Sky
               ;;
             "ReSukiSU-with-susfs")
               curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
